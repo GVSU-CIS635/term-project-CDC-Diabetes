@@ -1,0 +1,300 @@
+---
+title: "CDC Diabetes"
+author: "Bill Muchero"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Background
+
+To help us compare our findings from the association rule, we will use logistic regression to analyse our data
+
+## Libraries
+
+```{r setup}
+library(tidyverse)
+library(tidymodels)
+library(readr)
+library(stringr)
+library(googledrive)
+library(glmnet)
+```
+
+## Importing Data
+
+```
+drive_auth()
+drive_user()
+cdc2015 <-  drive_get(as_id("1ErZqM-IevlEYdDejLP5-oHikMXsHDCmg"))
+drive_download(cdc2015, overwrite = TRUE)
+```
+```{r}
+cdc <- read_csv("2015.csv")
+```
+
+```{r}
+# Selecting variables of interest
+cdc2015 <- cdc |>
+  select('DIABETE3', '_RFHYPE5', 'TOLDHI2', '_CHOLCHK', '_BMI5','SMOKE100',
+         'CVDSTRK3', '_MICHD', '_TOTINDA', '_FRTLT1', '_VEGLT1', '_RFDRHV5', 
+         'HLTHPLN1', 'MEDCOST', 'GENHLTH', 'MENTHLTH', 'PHYSHLTH', 'DIFFWALK',
+        'SEX', '_AGEG5YR', 'EDUCA', 'INCOME2')
+
+# Renaming the variables
+cdc2015 <- cdc2015 |>
+  dplyr::rename(Diabetes_012 = DIABETE3, HighBP = `_RFHYPE5`, HighChol = TOLDHI2, CholCheck = '_CHOLCHK',
+        BMI = '_BMI5', Smoker = SMOKE100, Stroke = CVDSTRK3, HeartDiseaseorAttack = '_MICHD',
+         PhysActivity = '_TOTINDA', Fruits = '_FRTLT1', Veggies = '_VEGLT1', HvyAlcoholConsump = '_RFDRHV5',
+        AnyHealthcare = 'HLTHPLN1', NoDocbcCost = MEDCOST, GenHlth = GENHLTH, MentHlth = MENTHLTH,    
+         PhysHlth = PHYSHLTH, DiffWalk = DIFFWALK, Sex = SEX, Age = '_AGEG5YR', Education = EDUCA,
+        Income = INCOME2)
+```
+
+# Data Preprocessing
+
+## Data Cleaning
+
+```{r}
+# Removing missing values
+cdc2015 <- na.omit(cdc2015)
+
+# Removing duplicates
+cdc2015 <- distinct(cdc2015)
+```
+
+## Selection of Variables
+
+```{r}
+cdc_five <- cdc2015 |>
+  select('Diabetes_012','HighChol','Smoker','MentHlth','Education','Income')
+```
+
+## Removing outliers
+
+These are the different values that are assigned. We are more interested into values that provide clear answers for the sake of the study. For example, Diabetes_012 has the following values:
+
+1 Yes
+2 Yes, but female told only during pregnancy
+3 No
+4 No, pre-diabetes or borderline diabetes
+7 Don’t know/Not Sure
+9 Refused
+The values 7 and 9 are considered not relevant for the dataset as we can't assume their true value.
+
+```{r}
+# Removing 7 & 9 from Diabetes_012
+cdc_five <- cdc_five |>
+  filter(Diabetes_012 != 7 & Diabetes_012 != 9)
+```
+
+We now have 4 values left for Diabetes_012. Based on the BRFSS 2015 dataset, we can bin the values into 3 categories
+
+Category 0: No Diabetes (values 2 and 3)
+
+Category 1: Prediabetes (value 4)
+
+Category 2: Diabetes (value 1)
+
+Reference
+
+1 Yes
+2 Yes, but female told only during pregnancy
+3 No
+4 No, pre-diabetes or borderline diabetes
+The value 2 is not considered as a chronic diabetes as it happened only during pregnancy.
+
+```{r}
+# Replacing values for Category 0, Category 1, Category 2
+cdc_five <- cdc_five |>
+              mutate(Diabetes_012 = case_when(
+              Diabetes_012 == 2 ~ 0,
+              Diabetes_012 == 3 ~ 0,
+              Diabetes_012 == 4 ~ 1,
+              Diabetes_012 == 1 ~ 2,
+              TRUE ~ Diabetes_012))
+
+table(cdc_five$Diabetes_012)
+```
+These are the different values for MentHlth. The values mean how many days during the past 30 days was your mental health not good? We are more interested into values that provide clear answers for the sake of the study.
+
+1 - 30 Number of days
+88 None
+77 Don’t know/Not sure
+99 Refused
+The values 77 and 99 are considered not relevant for the dataset as we can't assume their true value.
+
+and the value 88 will be changed to 0 meaning no days of bad mental health in the last 30 days.
+
+```{r}
+# Removing 77 & 99 from MentHlth
+cdc_five <- cdc_five |>
+  filter(MentHlth != 77 & MentHlth != 99)
+
+# Replacing 88 with 0
+cdc_five <- cdc_five |>
+              mutate(MentHlth = case_when(
+              MentHlth == 88 ~ 0,
+              TRUE ~ MentHlth))
+```
+
+Changing the smoker variable as well
+
+```{r}
+# Removing 7 & 9 from Smoker
+cdc_five <- cdc_five |>
+  filter(Smoker != 7 & Smoker != 9)
+
+# Replacing 2 with 0
+cdc_five <- cdc_five |>
+              mutate(Smoker = case_when(
+              Smoker == 2 ~ 0,
+              TRUE ~ Smoker))
+```
+
+Changing the Education variable
+
+```{r}
+# Removing 7 & 9 from Education
+cdc_five <- cdc_five |>
+  filter(Education != 9)
+```
+
+Changing the Income variable
+
+```{r}
+# Removing 77 & 99 from Income
+cdc_five <- cdc_five |>
+  filter(Income != 77 & Income != 99)
+```
+
+Cleaning Cholesterol
+
+```{r}
+# Removing 7 & 9 from Cholesterol
+cdc_five <- cdc_five |>
+  filter(HighChol != 7 & HighChol != 9)
+
+# Replacing 2 with 0
+cdc_five <- cdc_five |>
+              mutate(HighChol = case_when(
+              HighChol == 2 ~ 0,
+              TRUE ~ HighChol))
+
+cdc_five <- cdc_five  |>
+              mutate(Diabetes_012 = case_when(
+                      Diabetes_012  == 0 ~ "No Diabetes", 
+                      Diabetes_012 == 1 ~ "Pre-Diabetes",
+                      Diabetes_012 == 2 ~ "Diabetes",
+                         TRUE~ "other"))
+```
+
+## Splitting the Data
+
+```{r}
+cdc_five$Diabetes_012 <- as.factor(cdc_five$Diabetes_012)
+
+# Split data into train and test
+set.seed(12)
+split <- initial_split(cdc_five, prop = 0.8, strata = Diabetes_012)
+train <- split |>
+          training()
+test <- split |>
+        testing()
+```
+
+## Logistic Regression Model
+```{r}
+cdc_five$Diabetes_012 <- as.factor(cdc_five$Diabetes_012)
+
+# Train a logistic regression model
+model <- multinom_reg(penalty = 0.1, mixture = 1) |>
+  set_engine("glmnet") |>
+  set_mode("classification") |>
+  fit(Diabetes_012 ~ ., data = train)
+
+# Model summary
+tidy(model)
+```
+Now that we have our model, we will now try to make predictions
+
+```{r}
+# Class Predictions
+pred_class <- predict(model,
+                      new_data = test,
+                      type = "class")
+
+# Class Probabilities
+pred_proba <- predict(model,
+                      new_data = test,
+                      type = "prob")
+```
+
+For the results
+
+```{r}
+results <- test |>
+            select(Diabetes_012) |>
+            bind_cols(pred_class, pred_proba)
+
+accuracy(results, truth = Diabetes_012, estimate = .pred_class)
+```
+```{r}
+# Define the logistic regression model with penalty and mixture hyperparameters
+multinom_reg_model <- multinom_reg(mixture = tune(), penalty = tune(), engine = "glmnet")
+
+# Define the grid search for the hyperparameters
+grid <- grid_regular(mixture(), penalty(), levels = c(mixture = 4, penalty = 3))
+
+# Define the workflow for the model
+multinom_wf <- workflow() |>
+  add_model(multinom_reg_model) |>
+  add_formula(Diabetes_012 ~ .)
+
+# Define the resampling method for the grid search
+folds <- vfold_cv(train, v = 5)
+
+# Tune the hyperparameters using the grid search
+mulitnom_tuned <- tune_grid(
+  multinom_wf,
+  resamples = folds,
+  grid = grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+select_best(mulitnom_tuned, metric = "roc_auc")
+```
+More evaluation
+
+```{r}
+# Fit the model using the optimal hyperparameters
+multinom_final <- logistic_reg(penalty = 0.0000000001, mixture = 0) %>%
+                 set_engine("glmnet") %>%
+                 set_mode("classification") %>%
+                 fit(y~., data = train)
+
+# Evaluate the model performance on the testing set
+pred_class <- predict(log_reg_final,
+                      new_data = test,
+                      type = "class")
+results <- test %>%
+  select(y) %>%
+  bind_cols(pred_class, pred_proba)
+
+# Create confusion matrix
+conf_mat(results, truth = y,
+         estimate = .pred_class)
+```
+
+
+
+
+
+
+
+
+
+
