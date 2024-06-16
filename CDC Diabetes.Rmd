@@ -1,6 +1,6 @@
 ---
 title: "CDC Diabetes"
-author: "Bill Muchero"
+author: "Bhavya Shri Meda, Mohamed Ndiaye & Bill Muchero"
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Background
 
-To help us compare our findings from the association rule, we will use logistic regression to analyse our data
+To help us compare our findings from the association rule model, we will use logistic regression to analyse our data to assess the relationship between lifestyle and diabetes in the US.
 
 ## Libraries
 
@@ -26,15 +26,10 @@ library(glmnet)
 
 ## Importing Data
 
-```
-drive_auth()
-drive_user()
-cdc2015 <-  drive_get(as_id("1ErZqM-IevlEYdDejLP5-oHikMXsHDCmg"))
-drive_download(cdc2015, overwrite = TRUE)
-```
 ```{r}
 cdc <- read_csv("2015.csv")
 ```
+Since this is a large dataset, we are going to select the features that are of interest to the group. Some of the features that we will focus on include income, mental health, cholesterol and many others. Once we used the `select()` function to choose our features, we will rename our features so that they are easier to understand.
 
 ```{r}
 # Selecting variables of interest
@@ -56,6 +51,8 @@ cdc2015 <- cdc2015 |>
 
 # Data Preprocessing
 
+To make sure our dataset is clean, we are going to eliminate duplicates and missing values to make sure we get the best results when we build and test our model
+
 ## Data Cleaning
 
 ```{r}
@@ -68,6 +65,8 @@ cdc2015 <- distinct(cdc2015)
 
 ## Selection of Variables
 
+Now that our dataset is 'clean', we are going to reduce the dataset by selecting the features we are interested in investigating. Although many features are obvious causes of diabetes, we believe the features we have selected below are not the most obvious causes of diabetes.
+
 ```{r}
 cdc_five <- cdc2015 |>
   select('Diabetes_012','HighChol','Smoker','MentHlth','Education','Income')
@@ -75,7 +74,7 @@ cdc_five <- cdc2015 |>
 
 ## Removing outliers
 
-These are the different values that are assigned. We are more interested into values that provide clear answers for the sake of the study. For example, Diabetes_012 has the following values:
+Below are the different values that are assigned. We are more interested in the values that provide clear answers for the sake of the study. For example, Diabetes_012 has the following values:
 
 1 Yes
 2 Yes, but female told only during pregnancy
@@ -119,7 +118,7 @@ cdc_five <- cdc_five |>
 
 table(cdc_five$Diabetes_012)
 ```
-These are the different values for MentHlth. The values mean how many days during the past 30 days was your mental health not good? We are more interested into values that provide clear answers for the sake of the study.
+Below are the different values for MentHlth. The values mean how many days during the past 30 days was your mental health not good? We are more interested into values that provide clear answers for the sake of the study.
 
 1 - 30 Number of days
 88 None
@@ -141,7 +140,7 @@ cdc_five <- cdc_five |>
               TRUE ~ MentHlth))
 ```
 
-Changing the smoker variable as well
+Now we are going to do the same cleaning process for the remaining features (Smoker, Education, Income & Cholesterol)
 
 ```{r}
 # Removing 7 & 9 from Smoker
@@ -155,7 +154,7 @@ cdc_five <- cdc_five |>
               TRUE ~ Smoker))
 ```
 
-Changing the Education variable
+Cleaning the Education feature
 
 ```{r}
 # Removing 7 & 9 from Education
@@ -163,7 +162,7 @@ cdc_five <- cdc_five |>
   filter(Education != 9)
 ```
 
-Changing the Income variable
+Cleaning the Income feature
 
 ```{r}
 # Removing 77 & 99 from Income
@@ -171,7 +170,7 @@ cdc_five <- cdc_five |>
   filter(Income != 77 & Income != 99)
 ```
 
-Cleaning Cholesterol
+Cleaning Cholesterol feature
 
 ```{r}
 # Removing 7 & 9 from Cholesterol
@@ -184,6 +183,7 @@ cdc_five <- cdc_five |>
               HighChol == 2 ~ 0,
               TRUE ~ HighChol))
 
+# Changing the Diabetes values from numeric to string
 cdc_five <- cdc_five  |>
               mutate(Diabetes_012 = case_when(
                       Diabetes_012  == 0 ~ "No Diabetes", 
@@ -194,7 +194,10 @@ cdc_five <- cdc_five  |>
 
 ## Splitting the Data
 
+To build our model, we will first split our dataset into a training set and a testing set. This will allow us to train and test our model to ensure accuracy.
+
 ```{r}
+#Changing the Diabetes_012 feature to a factor
 cdc_five$Diabetes_012 <- as.factor(cdc_five$Diabetes_012)
 
 # Split data into train and test
@@ -206,10 +209,13 @@ test <- split |>
         testing()
 ```
 
-## Logistic Regression Model
-```{r}
-cdc_five$Diabetes_012 <- as.factor(cdc_five$Diabetes_012)
+## Building a Logistic Regression Model
 
+To compare our findings from the association rule model, we will use logistic regression to build a model that can predict if someone has diabetes or not when given certain features. 
+
+Since our `Diabetes_012` feature has more than two categorical variables, we will use a multinomial logistic regression for our model.
+
+```{r}
 # Train a logistic regression model
 model <- multinom_reg(penalty = 0.1, mixture = 1) |>
   set_engine("glmnet") |>
@@ -219,29 +225,32 @@ model <- multinom_reg(penalty = 0.1, mixture = 1) |>
 # Model summary
 tidy(model)
 ```
-Now that we have our model, we will now try to make predictions
+Now that we have our model, we will now try to make predictions. To make these predictions, we will use two different classes. In this instance `type = "class"` will allow us to get a target value ("yes" or "no") for each observation. On the other hand, `type = "prob"` will give us the probability of each target value for each observation.
 
 ```{r}
-# Class Predictions
-pred_class <- predict(model,
-                      new_data = test,
-                      type = "class")
+# Creating Class Predictions
+pred_class <- predict(model, new_data = test, type = "class")
 
-# Class Probabilities
-pred_proba <- predict(model,
-                      new_data = test,
-                      type = "prob")
+# Creating Class Probabilities
+pred_proba <- predict(model, new_data = test, type = "prob")
 ```
 
-For the results
+To evaluate our model, we will use the `accuracy()` function.
 
 ```{r}
 results <- test |>
             select(Diabetes_012) |>
             bind_cols(pred_class, pred_proba)
 
+# Evaluating the model's accuracy
 accuracy(results, truth = Diabetes_012, estimate = .pred_class)
 ```
+Without much domain knowledge, its hard to say if our model's estimate score is a good or reflective of how accurate our model is. However, if we are going by assumptions, one can say the estimate result means our model is pretty accurate when determining if someone either has diabetes or not, or if they  are pre-diabetic.
+
+## Hyperparameter Tuning
+
+To make our model better, we are going to use the hyperparameter tuning technique. This will allow us to run the model several times using different values. The results will allow us to know which mixture and penalty arguments will give us the best predictions.
+
 ```{r}
 # Define the logistic regression model with penalty and mixture hyperparameters
 multinom_reg_model <- multinom_reg(mixture = tune(), penalty = tune(), engine = "glmnet")
@@ -267,27 +276,36 @@ mulitnom_tuned <- tune_grid(
 
 select_best(mulitnom_tuned, metric = "roc_auc")
 ```
-More evaluation
+Now that we have our best penalty and mixture values, we now know which values will make our model work best. In this case, the penalty value needs to be 1e-10	and the mixture value needs to be 0. Below we shall build the final model using the penalty and mixture values we got above.
+
+Once we have our model, we will create a confusion matrix to evaluate our model.
 
 ```{r}
 # Fit the model using the optimal hyperparameters
-multinom_final <- logistic_reg(penalty = 0.0000000001, mixture = 0) %>%
-                 set_engine("glmnet") %>%
-                 set_mode("classification") %>%
-                 fit(y~., data = train)
+multinom_final <- multinom_reg(penalty = 1e-10, mixture = 0) |>
+                 set_engine("glmnet") |>
+                 set_mode("classification") |>
+                 fit(Diabetes_012~., data = train)
 
 # Evaluate the model performance on the testing set
-pred_class <- predict(log_reg_final,
+pred_class <- predict(multinom_final,
                       new_data = test,
                       type = "class")
-results <- test %>%
-  select(y) %>%
+results <- test |>
+  select(Diabetes_012) |>
   bind_cols(pred_class, pred_proba)
 
 # Create confusion matrix
-conf_mat(results, truth = y,
+conf_mat(results, truth = Diabetes_012,
          estimate = .pred_class)
 ```
+From the results above, our model did a better job predicting if someone had diabetes given the various features. However, it did poorly in determining if  some did not have diabetes. This means we will need to look into how we can make this model better given the model's errors and weaknesses.
+
+```{r}
+precision(results, truth = Diabetes_012,
+          estimate = .pred_class)
+```
+Now to assess our model's precision, we will use the the `precision()` function again. In this case, our final model has a lower estimate value than our original model. This might be the a better reflection of how precise our model is given the errors/false predictions we got when we did the confusion matrix.
 
 
 
