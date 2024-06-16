@@ -2,7 +2,8 @@
 title: "CDC Diabetes"
 author: "Bhavya Shri Meda, Mohamed Ndiaye & Bill Muchero"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,7 +16,7 @@ To help us compare our findings from the association rule model, we will use log
 
 ## Libraries
 
-```{r setup}
+```{r}
 library(tidyverse)
 library(tidymodels)
 library(readr)
@@ -307,7 +308,7 @@ precision(results, truth = Diabetes_012,
 ```
 Now to assess our model's precision, we will use the the `precision()` function again. In this case, our final model has a lower estimate value than our original model. This might be the a better reflection of how precise our model is given the errors/false predictions we got when we did the confusion matrix.
 
-
+In summation, our model has errors/weaknesses that need to be fixed. Given our lack of domain knowledge, its hard to say how precise our model is. In addition, its hard to say our model's estimate value represents how good our model is because the value depends on precision and the domain as well.
 
 
 
